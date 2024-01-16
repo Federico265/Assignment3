@@ -37,8 +37,13 @@ def build_model(travel_times, lines, weights):
 
     # Initialize the Gurobi model
     model = Model("NS_trains")
+
     line_names = ['800','3000','3100','3500','3900']
-    runnning_activites = {}  # Dictionary to store Gurobi variables
+    runnning_activites = {}
+    dwelling_activities = {}
+    transfer_activities = {}
+    sync_activities = {}
+    headway_activities = {}
 
     for k in range(5):
         station_names = lines.iloc[k].tolist()  # Extract station names from the first row
@@ -53,13 +58,21 @@ def build_model(travel_times, lines, weights):
                 break
             # Create a Gurobi variable for the activity between station1 and station2
             runnning_activites[f'{station1} to {station2} - {name}'] = model.addVar(vtype=GRB.CONTINUOUS,
-                                                                                        name=f"activity_{station1}_{station2}_{name}")
+                                                                        name=f"activity_{station1}_{station2}_{name}")
             runnning_activites[f'{station2} to {station1} - {name}'] = model.addVar(vtype=GRB.CONTINUOUS,
-                                                                                    name=f"activity_{station2}_{station1}_{name}")
+                                                                        name=f"activity_{station2}_{station1}_{name}")
 
-    print(len(runnning_activites))
+            if i != 0 and i != len(station_names):
+                dwelling_activities[f'dwelling at {station1} - {name} forward trip'] = model.addVar(vtype=GRB.CONTINUOUS,
+                                                        name=f"activity_dwelling at {station1} - {name} forward trip")
+                dwelling_activities[f'dwelling at {station1} - {name} backward trip'] = model.addVar(vtype=GRB.CONTINUOUS,
+                                                        name=f"activity_dwelling at {station1} - {name} backward trip")
+
+    print(dwelling_activities)
+
+
     # Objective function: Minimize the total weighted travel time
-    objective = quicksum(runnning_activites * weights)
+    objective = quicksum(rav * weights for rav in runnning_activites.values())
     model.setObjective(objective, GRB.MINIMIZE)
 
     model.update()
