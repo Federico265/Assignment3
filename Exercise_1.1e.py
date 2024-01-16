@@ -6,14 +6,26 @@ def read_basic_data():
     travel_times = pd.read_excel('a2_part1.xlsx','Travel Times')
     lines = pd.read_excel('a2_part1.xlsx', 'Lines')
 
-    # Drop the 'Name', 'Frequency', and 'Stops' columns as they are not needed for counting stations
-    stations_df = lines.drop(['Name', 'Frequency', 'Stops'], axis=1)
+    # Create an empty dictionary to store the station counts to generate the weight for each station
+    station_counts = {}
 
-    # Use value_counts() to count the occurrences of each station
-    station_counts = stations_df.value_counts()
+    # Iterate through the rows of the DataFrame
+    for index, row in lines.iterrows():
+        # Iterate through columns starting from 'Unnamed: 3'
+        for col in row.index[2:]:
+            station = row[col]
+            if pd.notna(station):
+                # If the station is not NaN, increment its count in the dictionary
+                if station in station_counts:
+                    station_counts[station] += 1
+                else:
+                    station_counts[station] = 1
+
+    # Convert the dictionary to a pandas Series for a cleaner output
+    station_counts_series = pd.Series(station_counts)
 
     # Print the counts for each station
-    print(station_counts)
+    print(station_counts_series)
 
     return travel_times
 
