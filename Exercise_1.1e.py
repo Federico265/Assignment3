@@ -36,15 +36,21 @@ def build_model(travel_times, lines, weights):
     # Initialize the Gurobi model
     model = Model("NS_trains")
 
-    runnning_activites = {}
-    for i in range(len(lines.columns)):
-        for j in range(len(lines.columns)):
-            station1 = lines[i,j]
-            station2 = lines[i,j+1]
+    # Assuming 'lines' is a DataFrame with station names
+    station_names = lines.iloc[0].tolist()  # Extract station names from the first row
+    runnning_activites = {}  # Dictionary to store Gurobi variables
 
-            # Store the trip count in the dictionary with station names as keys
+    model = Model("YourModel")  # Create a Gurobi model
+
+    # Create Gurobi variables for each possible trip between stations
+    for i in range(len(station_names)):
+        for j in range(i + 1, len(station_names)):
+            station1 = station_names[j-1]
+            station2 = station_names[j]
+
+            # Create a Gurobi variable for the activity between station1 and station2
             runnning_activites[f'{station1} to {station2}'] = model.addVar(vtype=GRB.CONTINUOUS,
-                                                                 name=f"activity_{station1}_{station2}")
+                                                                           name=f"activity_{station1}_{station2}")
 
     # Objective function: Minimize the total weighted travel time
     objective = quicksum(runnning_activites * weights)
