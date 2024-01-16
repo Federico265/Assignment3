@@ -1,4 +1,4 @@
-from gurobipy import Model, GRB
+from gurobipy import Model, GRB, quicksum
 import pandas as pd
 
 def read_basic_data():
@@ -6,47 +6,53 @@ def read_basic_data():
     travel_times = pd.read_excel('a2_part1.xlsx','Travel Times')
     lines = pd.read_excel('a2_part1.xlsx', 'Lines')
 
-    # Create an empty dictionary to store the station counts to generate the weight for each station
-    station_counts = {}
+    lines = lines.drop(['Name','Frequency'], axis = 1)
 
-    # Iterate through the rows of the DataFrame
-    for index, row in lines.iterrows():
-        # Iterate through columns starting from 'Unnamed: 3'
-        for col in row.index[2:]:
-            station = row[col]
-            if pd.notna(station):
-                # If the station is not NaN, increment its count in the dictionary
-                if station in station_counts:
-                    station_counts[station] += 1
-                else:
-                    station_counts[station] = 1
 
-    # Convert the dictionary to a pandas Series for a cleaner output
-    station_counts_series = pd.Series(station_counts)
+    weights = 1 #Each activity has the same importance for us
 
-    # Print the counts for each station
-    print(station_counts_series)
+    # # Create an empty dictionary to store the station counts to generate the weight for each station
+    # station_counts = {}
+    #
+    # # Iterate through the rows of the DataFrame
+    # for index, row in lines.iterrows():
+    #     # Iterate through columns starting from 'Unnamed: 2'
+    #     for col in row.index[2:]:
+    #         station = row[col]
+    #         if pd.notna(station):
+    #             # If the station is not NaN, increment its count in the dictionary
+    #             if station in station_counts:
+    #                 station_counts[station] += 1
+    #             else:
+    #                 station_counts[station] = 1
+    #
+    # activity_running_weights = {}
 
-    return travel_times
+    return travel_times, lines, weights
 
-read_basic_data()
 
-def build_model(travel_times,activity_weights):
+def build_model(travel_times, lines, weights):
 
     # Initialize the Gurobi model
     model = Model("NS_trains")
 
-    activity_vars = {}
-    for index, row in travel_times.iterrows():
-        from_station = row['From']
-        to_station = row['To']
-        # Create a variable for each activity (segment between stations)
-        activity_vars[(from_station, to_station)] = model.addVar(vtype=GRB.CONTINUOUS,
-                                                                 name=f"activity_{from_station}_{to_station}")
+    runnning_activites = {}
+    for i in range(len(lines.columns)):
+        for j in range(len(lines.columns)):
+            station1 = lines[i,j]
+            station2 = lines[i,j+1]
+
+            # Store the trip count in the dictionary with station names as keys
+            runnning_activites[f'{station1} to {station2}'] = model.addVar(vtype=GRB.CONTINUOUS,
+                                                                 name=f"activity_{station1}_{station2}")
 
     # Objective function: Minimize the total weighted travel time
-    objective = quicksum(activity_vars[activity] * weight for activity, weight in activity_weights.items())
+    objective = quicksum(runnning_activites * weights)
     model.setObjective(objective, GRB.MINIMIZE)
 
     model.update()
+
+travel_times, lines, weights = read_basic_data()
+print(lines)
+build_model(travel_times, lines, weights)
 
