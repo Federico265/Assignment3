@@ -262,7 +262,7 @@ def build_model(travel_times):
             sync_time - T * sync_p_vars[(station1, station2, line1, line2)],
             name=f"sync_{line1}_{line2}_{station1}_forward"
         )
-    # Seguir aca
+    # Seguir acaaa
 
     # Minimum headway time (3 minutes)
     min_headway_time = 3
