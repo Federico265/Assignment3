@@ -223,6 +223,35 @@ def build_model(travel_times):
         model.addConstr(variable >= dwell_time_lower, name=f"dwell_time_lower_{activity}")
         model.addConstr(variable <= dwell_time_upper, name=f"dwell_time_upper_{activity}")
 
+    # Constraints for transfer lines
+    #for key, transfer_time in transfer_vars.items():
+    #    line1, line2, direction = key
+
+    #    if direction == 'forward':
+    #        # For transfer from line1 to line2
+    #        model.addConstr(
+    #            departures[('Departure', 'Ehv', line2)] -
+    #            arrivals[('Arrival', 'Ehv', line1)] ==
+    #            transfer_time - T * transfer_p_vars[key],
+    #            name="transfer_{}_{}_{}_time".format(line1, line2, direction)
+    #        )
+    #    else:
+    #        # For transfer from line2 to line1 (note the reversed order for backward transfers)
+    #        model.addConstr(
+    #            departures[('Departure', 'Ehv', line2, 'return')] -
+    #            arrivals[('Arrival', 'Ehv', line1, 'return')] ==
+    #            transfer_time - T * transfer_p_vars[key],
+    #            name="transfer_{}_{}_{}_time".format(line1, line2, direction)
+    #        )
+
+    # Lower and upper bounds constraints for transfer activities
+    #transfer_time_lower = 2
+    #transfer_time_upper = 5
+    #for activity, variable in transfer_vars.items():
+    #    model.addConstr(variable >= transfer_time_lower, name=f"transfer_time_lower_{activity}")
+    #    model.addConstr(variable <= transfer_time_upper, name=f"transfer_time_upper_{activity}")
+
+
     # Fixed synchronization time (15 minutes)
     sync_time = 15
 
@@ -258,7 +287,7 @@ def build_model(travel_times):
         if direction == 'forward':
             model.addConstr(
                 arrivals[('Arrival', 'Ut', line2)] -
-                arrivals[('Arrival', 'Ut', line1)] >=
+                arrivals[('Arrival', 'Ut', line1)] ==
                 headway_var - T * headway_p_vars[key],
                 name=f"headway_{line1}_{line2}_forward"
             )
@@ -266,7 +295,7 @@ def build_model(travel_times):
         else:  # direction == 'backward'
             model.addConstr(
                 departures[('Departure', 'Ut', line2, 'return')] -
-                departures[('Departure', 'Ut', line1, 'return')] >=
+                departures[('Departure', 'Ut', line1, 'return')] ==
                 headway_var - T * headway_p_vars[key],
                 name=f"headway_{line1}_{line2}_backward"
             )
@@ -285,8 +314,6 @@ def build_model(travel_times):
     print("Constraints:")
     for constr in model.getConstrs():
         print(f"{constr.ConstrName}: {constr.sense} {constr.RHS}")
-
-
 
     return model
 
@@ -318,6 +345,36 @@ def solve_model(model):
 
     return solution_dict, cost
 
+
+def get_station_order_key(row):
+    # Define the station order for each line and direction
+    station_order = {
+        ('3000', 'North'): ['Nm', 'Ut', 'Asd', 'Amr', 'Hdr'],
+        ('3000', 'South'): ['Hdr', 'Amr', 'Asd', 'Ut', 'Nm'],
+        ('800', 'North'): ['Mt', 'Std', 'Ehv', 'Ut', 'Asd', 'Amr'],
+        ('800', 'South'): ['Amr', 'Asd', 'Ut', 'Ehv', 'Std', 'Mt'],
+        ('3100', 'North'): ['Nm', 'Ut', 'Shl'],
+        ('3100', 'South'): ['Shl', 'Ut', 'Nm'],
+        ('3500', 'North'): ['Vl', 'Ehv', 'Ut', 'Shl'],
+        ('3500', 'South'): ['Shl', 'Ut', 'Ehv', 'Vl'],
+        ('3900', 'North'): ['Hrl', 'Std', 'Ehv'],
+        ('3900', 'South'): ['Ehv', 'Std', 'Hrl'],
+
+        # Add other lines and directions as needed
+    }
+
+    # Extract the line, direction, and station from the row
+    line = row['Line']
+    direction = row['Direction']
+    station = row['Station']
+
+    # Use the line and direction to find the correct station order
+    if (line, direction) in station_order:
+        return station_order[(line, direction)].index(station)
+    else:
+        # If the line-direction pair is not in the station order, return a default value
+        return float('inf')
+
 def generate_readable_timetable(solution_dict):
     # Initialize a list to hold the timetable data
     timetable_data = []
@@ -326,43 +383,47 @@ def generate_readable_timetable(solution_dict):
     for var_name, time in solution_dict.items():
         parts = var_name.split('_')
         if parts[0] in {'dep', 'arr'}:
-            event_type = 'dep' if parts[0] == 'dep' else 'arr'
+            event_type = 'Departure' if parts[0] == 'dep' else 'Arrival'
             station = parts[1]
             line = parts[2]
-            direction = 'return' if 'return' in parts else 'outbound'
+            direction = 'North' if 'return' in parts else 'South'
             # Append a tuple with the line, direction, station, type, and time
             timetable_data.append((line, direction, station, event_type, time))
 
     # Convert the list of tuples into a DataFrame
     timetable_df = pd.DataFrame(timetable_data, columns=['Line', 'Direction', 'Station', 'Type', 'Time'])
 
-    # Post-processing to adjust direction names and event types for readability
-    timetable_df['Direction'] = timetable_df['Direction'].replace({'return': 'North', 'outbound': 'South'})
-    timetable_df['Type'] = timetable_df['Type'].replace({'dep': 'Departure', 'arr': 'Arrival'})
+    # Sort the DataFrame for better readability: by Line, Direction, and Station Order
+    timetable_df['StationOrder'] = timetable_df.apply(get_station_order_key, axis=1)
+    timetable_df.sort_values(by=['Line', 'Direction', 'StationOrder', 'Type'], ascending=[True, True, True, True],
+                             inplace=True)
 
-    # Sort the DataFrame for better readability: by Line, Direction, and Time
-    timetable_df.sort_values(by=['Line', 'Direction', 'Time'], inplace=True)
+    # Drop the 'StationOrder' column as it's no longer needed
+    timetable_df.drop('StationOrder', axis=1, inplace=True)
 
     # Reset the index for the sorted DataFrame
     timetable_df.reset_index(drop=True, inplace=True)
 
     return timetable_df
 
+def print_timetable(timetable_df):
+    for line in timetable_df['Line'].unique():
+        print(f"Line {line}:")
+        for direction in ['North', 'South']:
+            print(f"  Direction {direction}:")
+            filtered_df = timetable_df[(timetable_df['Line'] == line) & (timetable_df['Direction'] == direction)]
+            for index, row in filtered_df.iterrows():
+                print(f"    {row['Type']} {row['Station']} at {int(row['Time'])} minutes")
+            print()
 
 def runMain_Normal():
-
     travel_times = read_basic_data()
-
     model = build_model(travel_times)
-
     solution_dict, cost = solve_model(model)
 
-    if solution_dict:  # Check if the solution dictionary is not None
+    if solution_dict:
         timetable_df = generate_readable_timetable(solution_dict)
-        print(timetable_df)
-
-        # Optionally, export to Excel
-        timetable_df.to_excel('timetable.xlsx', index=False)
+        print_timetable(timetable_df)
 
 
 if __name__ == "__main__":
